@@ -1,10 +1,21 @@
-// import {data} from "./data.js";
 async function main() {
-    const {categories, questions, answers} = await import("./data.js");
+    const {categories, questions} = await import("./questions_" + jekyll_lang + ".js");
+    const {answers} = await import("./answers.js");
     const {limesurvey_answers} = await import("./limesurvey_data.js");
-    const show_limesurvey_buttons = limesurvey_answers.length > 0;
-    // 1: show only old data, 2: show only limesurvey data, 3: show both
-    let current_data = 1;
+    const old_answers = answers.concat(limesurvey_answers);
+    // TODO: Load actual answers instead of debug values
+    const new_answers = [{
+        categories: [0, 0, 0, 0],
+        questions: [[-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1], [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1], [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1], [-1, -1, -1, -1, -1, -1, -1, -1], [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1]]
+    }];
+    const conference_answers = [{
+        categories: [4, 2, 3, 5],
+        questions: [[0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0], [0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 0, 1], [0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0], [0, 1, 0, 1, 0, 1, 0, 1], [0, 1, 2, 3, 4, 0, 1, 2, 3, 4, 0]]
+    }];
+    const {translation} = await import("./translation.js");
+    const show_limesurvey_buttons = true;
+    // indices: old, new, conference
+    let current_data = [true, true, true];
 
     // media query, taken from materialize.min.css
     const media_query = window.matchMedia("only screen and (max-width: 992px)");
@@ -79,7 +90,7 @@ async function main() {
 
         root.append("text")
             .classed("header", true)
-            .text("Teilnehmerübersicht")
+            .text(translation.overview[jekyll_lang])
             .attr("x", width_categories / 2)
             .attr("y", 20)
             .attr("dominant-baseline", "central")
@@ -144,19 +155,24 @@ async function main() {
         return root.node();
     }
 
+    function get_current_answers() {
+        let current_answers = [];
+        if (current_data[0])
+            current_answers = current_answers.concat(old_answers);
+        if (current_data[1])
+            current_answers = current_answers.concat(new_answers);
+        if (current_data[2])
+            current_answers = current_answers.concat(conference_answers);
+        return current_answers
+    }
+
     /**
      * @summary This function accumulates and counts the answers per question
      * @param i index of question in {@link data}
      * @returns {number[][]} two-dimensional array, for each subquestion an array with the number of answers per answer option
      */
     function accumulate_answers(i) {
-        let current_answers = [];
-        if (current_data === 1)
-            current_answers = answers;
-        else if (current_data === 2)
-            current_answers = limesurvey_answers;
-        else if (current_data === 3)
-            current_answers = answers.concat(limesurvey_answers);
+        let current_answers = get_current_answers();
         const question = questions[i];
         // select valid answers based on categories and given question index
         let filtered_answers = current_answers
@@ -186,13 +202,7 @@ async function main() {
     }
 
     function accumulate_categories(i) {
-        let current_answers = [];
-        if (current_data === 1)
-            current_answers = answers;
-        else if (current_data === 2)
-            current_answers = limesurvey_answers;
-        else if (current_data === 3)
-            current_answers = answers.concat(limesurvey_answers);
+        let current_answers = get_current_answers();
         // select subcategory answers based on given category index and other active subcategories
         let other_categories = d3.range(categories.length).filter(j => j !== i);
         let filtered_answers = current_answers
@@ -775,13 +785,18 @@ async function main() {
         if (!show_limesurvey_buttons)
             return root.node();
         // position buttons next to toggle button for mobile view
-        const labels = ["Studienergebnisse", "weiterführende Ergebnisse", "alle Ergebnisse"];
+        // TODO: Translate
+        const labels = [translation.old_results[jekyll_lang], translation.new_results[jekyll_lang], translation.conference[jekyll_lang]];
         if (media_query.matches)
             pos_x += width_button;
         const tab = root.selectAll("g").data(labels).join("g")
             .attr("transform", (d, i) => `translate(${i * width_button}, 0)`)
             .on("click", function (d, i) {
-                current_data = i + 1;
+                current_data[i] = !current_data[i];
+                // keep at least one dataset
+                if (current_data.every(x => x === false)) {
+                    current_data[i] = true;
+                }
                 // redraw everything
                 update_categories();
                 update_question();
